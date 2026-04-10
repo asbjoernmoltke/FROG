@@ -110,6 +110,8 @@ def load_field_csv_with_time(
     N: int,
     delimiter: str = ",",
     center_pulse: bool = True,
+    crop_threshold: Optional[float] = 1e-3,
+    crop_padding: float = 2.0,
 ) -> ElectricField:
     """
     Load a complex E-field from a 3-column (t, real, imag) CSV and
@@ -117,13 +119,36 @@ def load_field_csv_with_time(
 
     The input rows must be sorted by time but may be arbitrarily (non-
     uniformly) spaced; real and imaginary parts are linearly
-    interpolated onto a uniform grid spanning [t[0], t[-1]] with N
-    samples, `dt = (t[-1] - t[0]) / (N - 1)`.
+    interpolated onto a uniform grid spanning the (optionally cropped)
+    time window with N samples.
+
+    Parameters
+    ----------
+    path
+        File to read.
+    N
+        Number of grid points for the resampled field.
+    delimiter
+        CSV delimiter (default ",").
+    center_pulse
+        If True, roll the resampled field so that its peak intensity
+        sits at index N//2.
+    crop_threshold
+        Fraction of peak intensity below which the pulse is considered
+        zero.  The time window is cropped to the support of the pulse
+        (where |E|^2 >= crop_threshold * max|E|^2) plus ``crop_padding``
+        times the support width on each side.  Set to ``None`` to
+        disable cropping and use the full CSV time range.
+    crop_padding
+        Extra margin on each side of the detected support, expressed as
+        a multiple of the support width.  Default 2.0 gives a total
+        window of ~5x the pulse support, which is usually enough to
+        capture the tails without wasting resolution on distant zeros.
 
     Returns
     -------
-    ElectricField on a Grid whose `dt` is set from the resampled axis
-    and whose default delay axis is centered with the same `dt`.
+    ElectricField on a Grid whose ``dt`` is set from the resampled axis
+    and whose default delay axis is centered with the same ``dt``.
     """
     p = Path(path)
     with p.open("r") as f:
@@ -145,12 +170,21 @@ def load_field_csv_with_time(
         re_src = re_src[order]
         im_src = im_src[order]
 
-    # Centered target grid: N samples, index N//2 -> t = 0 in grid.t.
-    # We resample using the physical time range but store the result on
-    # a centered grid with dt derived from that range.
-    span = t_src[-1] - t_src[0]
-    dt = span / (N - 1)
-    t_new = np.linspace(t_src[0], t_src[-1], N)
+    # Crop to the support of the pulse for finer time resolution.
+    t_lo, t_hi = t_src[0], t_src[-1]
+    if crop_threshold is not None:
+        intensity = re_src ** 2 + im_src ** 2
+        above = np.nonzero(intensity >= crop_threshold * intensity.max())[0]
+        if len(above) > 0:
+            support_lo = t_src[above[0]]
+            support_hi = t_src[above[-1]]
+            support_width = support_hi - support_lo
+            margin = crop_padding * support_width
+            t_lo = max(t_src[0], support_lo - margin)
+            t_hi = min(t_src[-1], support_hi + margin)
+
+    dt = (t_hi - t_lo) / (N - 1)
+    t_new = np.linspace(t_lo, t_hi, N)
 
     re = np.interp(t_new, t_src, re_src)
     im = np.interp(t_new, t_src, im_src)
