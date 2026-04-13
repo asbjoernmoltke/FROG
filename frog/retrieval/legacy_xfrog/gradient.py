@@ -67,7 +67,7 @@ class GradientDescent(Retriever):
     bt_grow: float = 1.5
     bt_max_iter: int = 20
 
-    def retrieve(
+    def _retrieve_impl(
         self,
         n_iter: int = 200,
         initial_field: Optional[ElectricField] = None,

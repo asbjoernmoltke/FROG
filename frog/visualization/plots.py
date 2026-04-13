@@ -11,7 +11,9 @@ import matplotlib.gridspec as gridspec
 
 from ..core.trace import FROGTrace
 from ..core.field import ElectricField
+from ..core.transform import forward_model
 from ..retrieval.legacy_xfrog.base import RetrievalResult
+from ..retrieval.shg.base import SHGRetrievalResult
 
 
 # ======================================================================
@@ -275,6 +277,100 @@ def plot_convergence(
     if standalone:
         plt.tight_layout()
     return ax
+
+
+def plot_traces(
+    measured: FROGTrace,
+    retrieved: Union[ElectricField, _AnyResult],
+    gate: Optional[ElectricField] = None,
+    *,
+    which: str = "field",
+    cmap: str = "inferno",
+    diff_cmap: str = "RdBu_r",
+    title: Optional[str] = None,
+    fig: Optional[plt.Figure] = None,
+    range: Optional[tuple[float, float] | float] = None,
+) -> plt.Figure:
+    """Side-by-side measured trace, retrieved trace, and their difference.
+
+    Parameters
+    ----------
+    measured : the measured FROGTrace.
+    retrieved : a retrieval result or the retrieved ElectricField.
+    gate : known gate (required for XFROG; for blind/SHG the gate is
+        taken from the result object).
+    which : attribute name when *retrieved* is a result object
+        (``"field"`` is the default).
+    cmap : colormap for the measured and retrieved panels.
+    diff_cmap : colormap for the difference panel (diverging).
+    title : overall figure title.
+    fig : existing figure to draw into (creates a new one if None).
+
+    Returns the figure.
+    """
+    # Resolve field and gate
+    if isinstance(retrieved, ElectricField):
+        rec_field = retrieved
+        rec_gate = gate
+    else:
+        rec_field = getattr(retrieved, which)
+        # Try to get the gate from the result (blind) or explicit arg
+        rec_gate = gate or getattr(retrieved, "gate", None)
+        # SHG: gate = field (only for actual SHG results)
+        if rec_gate is None and isinstance(retrieved, SHGRetrievalResult):
+            rec_gate = rec_field
+
+    if rec_gate is None:
+        raise ValueError(
+            "Cannot compute retrieved trace: pass gate= for XFROG results "
+            "(the gate is not stored in the result object)."
+        )
+
+    retr_trace = forward_model(rec_field, rec_gate).normalized()
+    meas_norm = measured.normalized()
+
+    grid = measured.grid
+    diff = 10*np.log10(np.abs(meas_norm.intensity - retr_trace.intensity) + 1e-30)
+
+    retr_trace = 10*np.log10(retr_trace.intensity + 1e-30)
+    meas_norm = 10*np.log10(meas_norm.intensity + 1e-30)
+
+    standalone = fig is None
+    if standalone:
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    else:
+        axes = fig.subplots(1, 3)
+
+    
+    for ax, data, ttl, cm in zip(
+        axes,
+        [meas_norm, retr_trace, diff],
+        ["Measured", "Retrieved", "Difference"],
+        [cmap, cmap, diff_cmap],
+    ):
+        if range is None:
+            kw = dict(vmin=data.max() - 30, vmax=data.max())  # show up to 30 dB below peak
+        else:
+            if isinstance(range, (int, float)):
+                range = (data.max() - range, data.max())
+            kw = dict(vmin=range[0], vmax=range[1])
+        if cm == diff_cmap:
+            # Center the diverging colormap at zero
+            vmin = kw["vmin"]
+            vmax = kw["vmax"]
+            vmin = vmax - (abs(vmax - vmin))/2
+            kw.update(vmin=vmin, vmax=vmax)
+
+        ax.pcolormesh(grid.delays, grid.freq, data, cmap=cm, shading="auto", **kw)
+        ax.set_xlabel("Delay")
+        ax.set_ylabel("Frequency")
+        ax.set_title(ttl)
+
+    if title:
+        fig.suptitle(title)
+
+    fig.tight_layout()
+    return fig
 
 
 # ======================================================================

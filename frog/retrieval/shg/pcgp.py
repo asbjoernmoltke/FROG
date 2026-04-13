@@ -34,7 +34,7 @@ class SHGPCGP(SHGRetriever):
             trace=self.trace, dtype=self.dtype, workers=self.workers,
         )
 
-    def retrieve(
+    def _retrieve_impl(
         self,
         n_iter: int = 500,
         initial_field: Optional[ElectricField] = None,

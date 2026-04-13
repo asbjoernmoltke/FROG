@@ -205,13 +205,36 @@ class BlindWorkspace:
             absq_out += out.imag * out.imag
 
     @staticmethod
-    def center_on_E(E: np.ndarray, G: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Roll both E and G so that argmax|E|^2 lands at index N//2.
-        Joint time-translation is a trivial ambiguity of blind FROG, so this
-        preserves the forward trace exactly."""
+    def center_on_E(E: np.ndarray, G: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
+        """Post-process blind retrieval to remove trivial ambiguities.
+
+        1. Time-translation: roll both E and G so argmax|E|^2 is at N//2.
+        2. Frequency-shift: remove the carrier frequency of G by shifting
+           it onto E, so that G is baseband.  Blind FROG has a frequency-
+           shift ambiguity: E*exp(iωt), G*exp(-iωt) produce the same
+           trace.  We resolve it by forcing G to have zero spectral
+           centroid.
+        """
         N = E.shape[0]
+        # 1. Time centering
         shift = N // 2 - int(np.argmax(np.abs(E) ** 2))
-        return np.roll(E, shift), np.roll(G, shift)
+        E = np.roll(E, shift)
+        G = np.roll(G, shift)
+
+        # 2. Frequency-shift removal
+        # Compute spectral centroid of G
+        G_spec = np.fft.fftshift(np.abs(np.fft.fft(np.fft.ifftshift(G))) ** 2)
+        freq = np.fft.fftshift(np.fft.fftfreq(N, dt))
+        total = G_spec.sum()
+        if total > 0:
+            nu_G = np.dot(freq, G_spec) / total
+            # Shift G -> baseband, compensate on E
+            t = (np.arange(N) - N // 2) * dt
+            phase_ramp = np.exp(-2j * np.pi * nu_G * t).astype(E.dtype)
+            G = G * phase_ramp
+            E = E * np.conj(phase_ramp)
+
+        return E, G
 
     def random_initial(self, seed: int) -> tuple[np.ndarray, np.ndarray]:
         rng = np.random.default_rng(seed)

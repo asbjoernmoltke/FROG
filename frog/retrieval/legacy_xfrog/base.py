@@ -3,6 +3,7 @@ Abstract base class for XFROG retrieval algorithms.
 """
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List
@@ -20,6 +21,7 @@ class RetrievalResult:
     field: ElectricField    # retrieved pulse
     error_curve: List[float]  # FROG error after each iteration
     n_iterations: int
+    exec_time: float = 0.0   # wall-clock seconds for retrieve()
 
 
 @dataclass
@@ -28,7 +30,7 @@ class Retriever(ABC):
     Abstract base for XFROG retrieval algorithms.
 
     Every concrete retriever receives the measured trace and the known gate
-    at construction time, then implements `retrieve()`.
+    at construction time, then implements `_retrieve_impl()`.
 
     The shared `frog_error` static method provides the standard normalized
     RMS intensity error metric used across all algorithms.
@@ -43,8 +45,15 @@ class Retriever(ABC):
                 "trace and gate must share the same Grid instance."
             )
 
-    @abstractmethod
     def retrieve(self, n_iter: int = 200, **kwargs) -> RetrievalResult:
+        """Run retrieval, time it, and return a RetrievalResult."""
+        t0 = time.perf_counter()
+        result = self._retrieve_impl(n_iter, **kwargs)
+        result.exec_time = time.perf_counter() - t0
+        return result
+
+    @abstractmethod
+    def _retrieve_impl(self, n_iter: int = 200, **kwargs) -> RetrievalResult:
         """Run retrieval and return a RetrievalResult."""
         ...
 

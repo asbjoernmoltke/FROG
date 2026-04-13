@@ -69,7 +69,7 @@ class PCGP(Retriever):
 
     eps: float = 1e-12
 
-    def retrieve(
+    def _retrieve_impl(
         self,
         n_iter: int = 200,
         initial_field: Optional[ElectricField] = None,

@@ -47,7 +47,7 @@ class BlindGPA(BlindRetriever):
             trace=self.trace, dtype=self.dtype, workers=self.workers,
         )
 
-    def retrieve(
+    def _retrieve_impl(
         self,
         n_iter: int = 500,
         initial_field: Optional[ElectricField] = None,
@@ -161,7 +161,7 @@ class BlindGPA(BlindRetriever):
         I_buf += out_buf.imag * out_buf.imag
         error_curve.append(fast_frog_error(I_buf, I_meas, peak_I_meas, err_scratch))
 
-        E, G = ws.center_on_E(E, G)
+        E, G = ws.center_on_E(E, G, self.trace.grid.dt)
 
         return BlindRetrievalResult(
             field=ElectricField(grid=self.trace.grid, data=E),
