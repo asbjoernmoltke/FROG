@@ -7,14 +7,14 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from frog.io import MockDataset, load_field_csv_with_time
 from frog.retrieval.blind_xfrog import BlindGPA, BlindGradient
 from frog.retrieval.multigrid import multigrid_retrieve
 from frog.visualization import compare_pulse, plot_convergence, plot_traces
 
-csv = Path(__file__).resolve().parent / "data" / "E_test_with_t.csv"
+csv = Path(__file__).resolve().parent.parent / "data" / "E_test_with_t.csv"
 truth = load_field_csv_with_time(csv, N=1024, crop_padding=0.5)
 dataset = MockDataset.from_field(truth, gate_duration=5e-15, noise_level=0.001)
 
